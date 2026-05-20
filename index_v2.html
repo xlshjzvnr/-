@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Flight Simulator in HTML</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --boeing-green: #00FF00;
+            --boeing-cyan: #00FFFF;
+            --boeing-magenta: #FF00FF;
+            --theme-bg: #111;
+            --tape-bg: rgba(30, 30, 30, 0.7);
+        }
+
+        body {
+            background-color: #000;
+            color: white;
+            font-family: 'Share Tech Mono', monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            user-select: none;
+        }
+
+        /* 왼쪽 패널: FMC & 시스템 & 맵 */
+        #left-panel {
+            width: 250px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel-title { color: var(--boeing-cyan); font-size: 1.2rem; margin: 0 0 10px 0; text-align: center; border-bottom: 1px solid #333; padding-bottom: 5px; }
+
+        .sys-btn {
+            background: #333; color: white; border: 1px solid #555;
+            padding: 8px; font-family: inherit; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        .sys-btn.on { background: var(--boeing-green); color: black; border-color: white; box-shadow: 0 0 10px rgba(0,255,0,0.5); }
+
+        .fmc-group { display: flex; flex-direction: column; gap: 5px; }
+        .fmc-group select, .fmc-group button {
+            background: black; color: var(--boeing-green); border: 1px solid var(--boeing-green);
+            padding: 5px; font-family: inherit;
+        }
+        .fmc-group button:hover { background: var(--boeing-green); color: black; cursor: pointer; }
+
+        #nav-map { background: #001100; border: 1px solid var(--boeing-green); width: 100%; height: 250px; }
+
+        /* 오른쪽 패널: HUD 및 조종간 */
+        #right-panel {
+            width: 650px;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+
+        /* MCP (Autopilot Panel) */
+        #mcp-panel {
+            background: #1a1a1a; border: 2px solid #333; border-radius: 8px; padding: 10px;
+            display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        }
+        .mcp-box { display: flex; flex-direction: column; align-items: center; background: black; padding: 5px; border: 1px solid #555; border-radius: 4px; }
+        .mcp-box label { color: white; font-size: 0.8rem; }
+        .mcp-box input { width: 50px; background: transparent; border: none; color: var(--boeing-magenta); font-family: inherit; font-size: 1.2rem; text-align: center; }
+        .mcp-box input:focus { outline: none; }
+
+        /* PFD 화면 */
+        #pfd-wrapper { background: #0a0a0a; border: 2px solid #333; border-radius: 10px; overflow: hidden; }
+        #pfd-screen { position: relative; transition: opacity 0.5s; opacity: 0; }
+        #pfd-screen.powered { opacity: 1; }
+
+        #pfd { position: relative; height: 380px; background-color: var(--theme-bg); overflow: hidden; border-bottom: 2px solid #333; }
+
+        #roll-container { position: absolute; top: 50%; left: 50%; width: 1500px; height: 1500px; transform: translate(-50%, -50%); }
+        #pitch-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #sky { width: 100%; height: 50%; background: linear-gradient(to bottom, #003399, #0066cc); }
+        #ground { width: 100%; height: 50%; background: linear-gradient(to top, #4a3018, #8b5a2b); border-top: 2px solid white; }
+
+        .pitch-line { position: absolute; left: 50%; transform: translateX(-50%); border-top: 2px solid white; text-align: center; color: white; font-size: 0.8rem; line-height: 0; }
+        .pitch-line span { background: var(--theme-bg); padding: 0 4px; }
+
+        #plane-symbol { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 120px; height: 10px; display: flex; justify-content: space-between; align-items: center; z-index: 15; }
+        .wing { width: 40px; height: 4px; background-color: yellow; border: 1px solid black; }
+        .center-dot { width: 12px; height: 12px; background-color: transparent; border: 3px solid yellow; border-radius: 10%; box-sizing: border-box; }
+
+        #fpm { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; border: 2px solid yellow; border-radius: 50%; box-sizing: border-box; z-index: 25; transform: translate(-50%, -50%); }
+        #fpm::after { content: ''; position: absolute; top: -12px; left: calc(50% - 1px); width: 2px; height: 10px; background-color: yellow; }
+        #fpm::before { content: ''; position: absolute; top: calc(50% - 1px); left: -10px; width: 44px; height: 2px; background-color: yellow; }
+
+        #ils-h, #ils-v { position: absolute; background: var(--boeing-magenta); z-index: 20; display: none; }
+        #ils-h { width: 150px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        #ils-v { width: 2px; height: 150px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+        .tape { position: absolute; background-color: var(--tape-bg); border: 1px solid white; display: flex; align-items: center; justify-content: center; z-index: 10; }
+        .tape-vertical { top: 15%; bottom: 15%; width: 70px; flex-direction: column; font-size: 1.2rem; }
+        #ias-tape { left: 10px; }
+        #alt-tape { right: 10px; }
+        #hdg-tape { top: 10px; left: 50%; transform: translateX(-50%); width: 120px; height: 35px; font-size: 1.2rem; font-weight: bold; color: var(--boeing-green); }
+        .tape-label { color: var(--boeing-cyan); font-size: 0.8rem; margin-bottom: 5px; }
+        .tape-value { color: var(--boeing-green); font-weight: bold; font-size: 1.3rem; border: 2px solid white; padding: 5px; background: black; width: 80%; text-align: center; }
+
+        #master-warning {
+            position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
+            color: white; font-size: 2rem; font-weight: bold; background: rgba(255, 0, 0, 0.8);
+            padding: 5px 20px; border: 2px solid white; display: none; z-index: 30; text-align: center;
+        }
+
+        #status-panel { padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; background-color: #1a1a1a; }
+        #feedback { color: var(--boeing-cyan); font-size: 0.95rem; width: 100%; }
+
+        #controls { padding: 15px; background: #0a0a0a; border-top: 2px solid #333; display: grid; grid-template-columns: 1fr 1fr; gap: 15px 20px; }
+        .control-group { display: flex; align-items: center; justify-content: space-between; }
+        .control-group label { width: 70px; color: var(--boeing-cyan); font-size: 0.9rem; }
+        .control-group input[type="range"] { flex-grow: 1; margin: 0 10px; cursor: pointer; }
+        .control-value { width: 45px; text-align: right; color: white; font-size: 0.9rem; }
+
+        #start-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        #start-btn { padding: 20px 40px; font-size: 1.5rem; background: var(--boeing-green); cursor: pointer; font-family: inherit; font-weight: bold; }
+        
+        .turb-indicator { color: orange; font-weight: bold; animation: blink 1s infinite; display: none; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay"><button id="start-btn">ENTER FLIGHT DECK</button></div>
+
+    <!-- 왼쪽 시스템 패널 -->
+    <div id="left-panel">
+        <h2 class="panel-title">ELEC & ENG</h2>
+        <button id="btn-bat" class="sys-btn">BATTERY: OFF</button>
+        <button id="btn-eng" class="sys-btn">ENGINE: OFF</button>
+        
+        <h2 class="panel-title" style="margin-top: 10px;">FMC / ROUTE</h2>
+        <div class="fmc-group">
+            <label>DEP</label>
+            <select id="sel-dep">
+                <option value="RKSS">RKSS (Gimpo)</option>
+                <option value="RKSI">RKSI (Incheon)</option>
+                <option value="RKPK">RKPK (Gimhae)</option>
+                <option value="RKPC">RKPC (Jeju)</option>
+            </select>
+            <label>ARR</label>
+            <select id="sel-arr">
+                <option value="RKPC">RKPC (Jeju)</option>
+                <option value="RKPK">RKPK (Gimhae)</option>
+                <option value="RKSS">RKSS (Gimpo)</option>
+                <option value="RKSI">RKSI (Incheon)</option>
+            </select>
+            <button id="btn-exec" style="margin-top: 5px;">EXECUTE PLAN</button>
+        </div>
+
+        <h2 class="panel-title" style="margin-top: 10px;">NAV MAP</h2>
+        <canvas id="nav-map" width="220" height="250"></canvas>
+    </div>
+
+    <!-- 오른쪽 조종석 패널 -->
+    <div id="right-panel">
+        
+        <!-- MCP (오토파일럿) 패널 -->
+        <div id="mcp-panel">
+            <div class="mcp-box"><label>IAS</label><input type="number" id="mcp-ias" value="250"></div>
+            <button id="btn-at" class="sys-btn">A/T</button>
+            <button id="btn-lnav" class="sys-btn">LNAV</button>
+            <button id="btn-vnav" class="sys-btn">VNAV</button>
+            <button id="btn-app" class="sys-btn">APP</button>
+            <button id="btn-ap" class="sys-btn">AP CMD</button>
+            <div class="mcp-box"><label>ALT</label><input type="number" id="mcp-alt" value="10000"></div>
+        </div>
+
+        <div id="pfd-wrapper">
+            <div id="pfd-screen">
+                <div id="pfd">
+                    <div id="roll-container">
+                        <div id="pitch-container">
+                            <div id="sky"></div>
+                            <div id="ground"></div>
+                            <div id="pitch-lines"></div>
+                        </div>
+                    </div>
+
+                    <div id="ils-h"></div>
+                    <div id="ils-v"></div>
+
+                    <div id="plane-symbol">
+                        <div class="wing"></div><div class="center-dot"></div><div class="wing"></div>
+                    </div>
+                    <div id="fpm"></div>
+
+                    <div id="hdg-tape" class="tape">HDG <span id="hdg-val" style="margin-left:10px;">360</span></div>
+                    <div id="ias-tape" class="tape tape-vertical">
+                        <div class="tape-label">IAS</div><div id="ias-val" class="tape-value">0</div>
+                    </div>
+                    <div id="alt-tape" class="tape tape-vertical">
+                        <div class="tape-label">ALT</div><div id="alt-val" class="tape-value">0</div>
+                    </div>
+
+                    <div id="master-warning">WARNING</div>
+                </div>
+            </div>
+            
+            <div id="status-panel">
+                <div id="feedback">배터리와 엔진을 켜주십시오. (T키: 난기류 토글) <span class="turb-indicator" id="turb-ind">TURB</span></div>
+            </div>
+
+            <div id="controls">
+                <div class="control-group"><label>THRUST</label><input type="range" id="thrust" min="0" max="100" value="0"><div id="thrust-val" class="control-value">0%</div></div>
+                <div class="control-group"><label>PITCH</label><input type="range" id="cg" min="-20" max="20" step="0.5" value="0"><div id="cg-val" class="control-value">0</div></div>
+                <div class="control-group"><label>ROLL</label><input type="range" id="roll" min="-60" max="60" step="1" value="0"><div id="roll-val" class="control-value">0°</div></div>
+                <div class="control-group"><label>YAW</label><input type="range" id="yaw" min="-30" max="30" step="1" value="0"><div id="yaw-val" class="control-value">0°</div></div>
+                <div class="control-group" style="grid-column: span 2;"><label>FLAPS</label><input type="range" id="flaps" min="0" max="30" step="10" value="0"><div id="flaps-val" class="control-value">0°</div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const AIRPORTS = {
+            RKSS: { name: 'Gimpo', x: 70, y: 50 }, RKSI: { name: 'Incheon', x: 50, y: 60 },
+            RKPK: { name: 'Gimhae', x: 170, y: 180 }, RKPC: { name: 'Jeju', x: 80, y: 230 }
+        };
+
+        let state = {
+            batOn: false, engOn: false,
+            ias: 0, alt: 0, pitch: 0, heading: 180,
+            thrust: 0, flaps: 0, cg: 0, rollTarget: 0, actualRoll: 0, yawTarget: 0, verticalSpeed: 0,
+            mass: 100, weight: 1000, isStalling: false, turbulence: false, landed: false,
+            posX: AIRPORTS.RKSS.x, posY: AIRPORTS.RKSS.y,
+            route: { dep: 'RKSS', arr: null },
+            ap: { cmd: false, at: false, lnav: false, vnav: false, app: false, targetIas: 250, targetAlt: 10000 }
+        };
+
+        const ui = {
+            bat: document.getElementById('btn-bat'), eng: document.getElementById('btn-eng'), screen: document.getElementById('pfd-screen'), mapCanvas: document.getElementById('nav-map'),
+            dep: document.getElementById('sel-dep'), arr: document.getElementById('sel-arr'), exec: document.getElementById('btn-exec'),
+            ilsH: document.getElementById('ils-h'), ilsV: document.getElementById('ils-v'), warn: document.getElementById('master-warning'), feedback: document.getElementById('feedback'), turbInd: document.getElementById('turb-ind'),
+            rollCont: document.getElementById('roll-container'), pitchCont: document.getElementById('pitch-container'), fpm: document.getElementById('fpm'), ias: document.getElementById('ias-val'), alt: document.getElementById('alt-val'), hdg: document.getElementById('hdg-val'),
+            inpThrust: document.getElementById('thrust'), inpFlaps: document.getElementById('flaps'), inpCG: document.getElementById('cg'), inpRoll: document.getElementById('roll'), inpYaw: document.getElementById('yaw'),
+            valThrust: document.getElementById('thrust-val'), valFlaps: document.getElementById('flaps-val'), valCG: document.getElementById('cg-val'), valRoll: document.getElementById('roll-val'), valYaw: document.getElementById('yaw-val'),
+            pitchLines: document.getElementById('pitch-lines'),
+            apCmd: document.getElementById('btn-ap'), apAt: document.getElementById('btn-at'), apLnav: document.getElementById('btn-lnav'), apVnav: document.getElementById('btn-vnav'), apApp: document.getElementById('btn-app'), mcpIas: document.getElementById('mcp-ias'), mcpAlt: document.getElementById('mcp-alt')
+        };
+        const ctx = ui.mapCanvas.getContext('2d');
+        let audioCtx, engineOsc, engineGain;
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-overlay').style.display = 'none';
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            engineOsc = audioCtx.createOscillator(); engineGain = audioCtx.createGain();
+            engineOsc.type = 'sine'; engineOsc.frequency.value = 100; engineGain.gain.value = 0;
+            engineOsc.connect(engineGain); engineGain.connect(audioCtx.destination); engineOsc.start();
+            requestAnimationFrame(gameLoop);
+        });
+
+        function playVoice(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US'; utterance.rate = 1.1; window.speechSynthesis.speak(utterance);
+        }
+
+        ui.bat.addEventListener('click', () => {
+            state.batOn = !state.batOn; ui.bat.innerText = state.batOn ? "BATTERY: ON" : "BATTERY: OFF"; ui.bat.className = state.batOn ? "sys-btn on" : "sys-btn";
+            state.batOn ? ui.screen.classList.add('powered') : ui.screen.classList.remove('powered');
+        });
+        ui.eng.addEventListener('click', () => {
+            if(!state.batOn) return;
+            state.engOn = !state.engOn; ui.eng.innerText = state.engOn ? "ENGINE: ON" : "ENGINE: OFF"; ui.eng.className = state.engOn ? "sys-btn on" : "sys-btn";
+            state.engOn ? engineGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 2) : engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 1);
+        });
+
+        ui.exec.addEventListener('click', () => {
+            if(!state.batOn) return;
+            state.route.dep = ui.dep.value; state.route.arr = ui.arr.value;
+            state.posX = AIRPORTS[state.route.dep].x; state.posY = AIRPORTS[state.route.dep].y;
+            state.alt = 0; state.ias = 0; state.heading = 180; state.thrust = 0; ui.inpThrust.value = 0; ui.valThrust.innerText = '0%';
+        });
+
+        function toggleApMode(btn, key) {
+            if(!state.batOn) return;
+            state.ap[key] = !state.ap[key];
+            btn.className = state.ap[key] ? "sys-btn on" : "sys-btn";
+        }
+        ui.apCmd.addEventListener('click', () => {
+            toggleApMode(ui.apCmd, 'cmd');
+            if(!state.ap.cmd) { state.ap.lnav=false; state.ap.vnav=false; state.ap.app=false; ui.apLnav.className="sys-btn"; ui.apVnav.className="sys-btn"; ui.apApp.className="sys-btn"; }
+        });
+        ui.apAt.addEventListener('click', () => toggleApMode(ui.apAt, 'at'));
+        ui.apLnav.addEventListener('click', () => { if(state.ap.cmd) toggleApMode(ui.apLnav, 'lnav'); });
+        ui.apVnav.addEventListener('click', () => { if(state.ap.cmd) toggleApMode(ui.apVnav, 'vnav'); });
+        ui.apApp.addEventListener('click', () => { if(state.ap.cmd) toggleApMode(ui.apApp, 'app'); });
+        ui.mcpIas.addEventListener('change', e => state.ap.targetIas = parseInt(e.target.value));
+        ui.mcpAlt.addEventListener('change', e => state.ap.targetAlt = parseInt(e.target.value));
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 't') {
+                state.turbulence = !state.turbulence;
+                ui.turbInd.style.display = state.turbulence ? 'inline' : 'none';
+            }
+        });
+
+        function setThrust(v) { state.thrust = Math.max(0, Math.min(100, v)); ui.inpThrust.value = state.thrust; ui.valThrust.innerText = Math.round(state.thrust)+'%'; }
+        function setCG(v) { state.cg = Math.max(-20, Math.min(20, v)); ui.inpCG.value = state.cg; ui.valCG.innerText = state.cg.toFixed(1); }
+        function setRoll(v) { state.rollTarget = Math.max(-45, Math.min(45, v)); ui.inpRoll.value = state.rollTarget; ui.valRoll.innerText = Math.round(state.rollTarget)+'°'; }
+
+        ui.inpThrust.addEventListener('input', e => { if(!state.ap.at) setThrust(e.target.value); });
+        ui.inpFlaps.addEventListener('input', e => { state.flaps = parseInt(e.target.value); ui.valFlaps.innerText = state.flaps+'°'; });
+        ui.inpCG.addEventListener('input', e => { if(!state.ap.cmd || !state.ap.vnav) setCG(e.target.value); });
+        ui.inpRoll.addEventListener('input', e => { if(!state.ap.cmd || !state.ap.lnav) setRoll(e.target.value); });
+        ui.inpYaw.addEventListener('input', e => { state.yawTarget = parseInt(e.target.value); ui.valYaw.innerText = state.yawTarget+'°'; });
+
+        for(let i = -60; i <= 60; i += 10) {
+            if(i === 0) continue;
+            let line = document.createElement('div'); line.className = 'pitch-line';
+            line.style.top = `calc(50% - ${i * 4}px)`; line.style.width = i % 20 === 0 ? '100px' : '50px';
+            line.innerHTML = `<span>${Math.abs(i)}</span>`; ui.pitchLines.appendChild(line);
+        }
+
+        let lastTime = 0;
+        function gameLoop(time) {
+            const dt = Math.min((time - lastTime) / 1000, 0.1); lastTime = time;
+
+            if(!state.batOn) { requestAnimationFrame(gameLoop); return; }
+
+            let ilsHdgDev = 0; let ilsAltDev = 0; let distToArr = 999;
+            if(state.route.arr) {
+                const arrPt = AIRPORTS[state.route.arr];
+                const dx = arrPt.x - state.posX; const dy = arrPt.y - state.posY;
+                distToArr = Math.sqrt(dx*dx + dy*dy);
+                let targetHdgMap = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+                ilsHdgDev = targetHdgMap - state.heading;
+                if(ilsHdgDev > 180) ilsHdgDev -= 360; if(ilsHdgDev < -180) ilsHdgDev += 360;
+                let targetAlt = distToArr * 20; 
+                ilsAltDev = targetAlt - state.alt;
+            }
+
+            // 오토파일럿 제어
+            if(state.ap.at && state.engOn) {
+                let speedError = state.ap.targetIas - state.ias;
+                setThrust(state.thrust + speedError * dt * 3);
+            }
+            if(state.ap.cmd) {
+                if(state.ap.app && distToArr < 100) {
+                    setRoll(ilsHdgDev * 2.5); 
+                    setCG(-ilsAltDev * 0.02); 
+                } else {
+                    if(state.ap.lnav && state.route.arr) setRoll(ilsHdgDev * 1.5);
+                    if(state.ap.vnav) {
+                        let altError = state.ap.targetAlt - state.alt;
+                        let targetVspeed = Math.max(-3000, Math.min(3000, altError * 2));
+                        let vSpeedError = targetVspeed - state.verticalSpeed;
+                        setCG(state.cg + vSpeedError * dt * 0.05);
+                    }
+                }
+            }
+
+            // --- 개선된 물리 엔진 ---
+            state.actualRoll += (state.rollTarget - state.actualRoll) * dt * 2;
+            let rollRad = state.actualRoll * Math.PI / 180;
+            const targetPitch = state.cg * 1.5;
+            
+            // 고도에 따른 공기밀도 (엔진 효율에만 사용)
+            let airDensity = Math.max(0.3, 1 - (state.alt / 45000));
+            
+            // 받음각 (Pitch)을 양력 공식에 반영하여 기수를 들면 즉시 양력 발생
+            let aoa = state.pitch;
+            let liftFactor = Math.pow(state.ias, 2) / 60000;
+            
+            // 기수를 들수록 양력도 오르고 항력도 오름
+            let totalLift = liftFactor * state.weight * (1 + state.flaps * 0.03 + Math.max(-5, aoa) * 0.05);
+            let drag = liftFactor * 120 * (1 + state.flaps * 0.02 + Math.abs(aoa) * 0.02) + (Math.abs(state.yawTarget) * 2); 
+            
+            let verticalLift = totalLift * Math.cos(rollRad);
+            let horizontalLift = totalLift * Math.sin(rollRad); 
+
+            // 엔진 추력 대폭 상향 (100% 추력시 300노트 이상 도달 가능)
+            let thrustForce = state.engOn ? state.thrust * 12 * airDensity : 0; 
+            let gravityAccel = state.weight * Math.sin(state.pitch * Math.PI / 180);
+            
+            let accel = (thrustForce - drag - gravityAccel) / state.mass;
+            state.ias += accel * dt * 10;
+            if(state.ias < 0) state.ias = 0;
+
+            let turnRate = (horizontalLift / (state.mass * Math.max(state.ias, 50)) * 500) + (state.yawTarget * 0.5);
+            state.heading = (state.heading + turnRate * dt + 360) % 360;
+
+            let mapSpeed = state.ias * 0.005 * dt;
+            state.posX += Math.sin(state.heading * Math.PI / 180) * mapSpeed;
+            state.posY -= Math.cos(state.heading * Math.PI / 180) * mapSpeed;
+
+            if(state.turbulence) {
+                state.actualRoll += (Math.random() - 0.5) * 3;
+                state.pitch += (Math.random() - 0.5) * 1.5;
+                state.verticalSpeed += (Math.random() - 0.5) * 150;
+            }
+
+            // 고정 IAS 기준 실속 방지 로직
+            let stallSpeed = 130 - (state.flaps * 1.5); 
+            if (state.ias < stallSpeed && state.alt > 10) {
+                verticalLift *= 0.2; 
+                state.pitch -= 15 * dt; // 실속 시 기수가 강제로 떨어짐
+                ui.warn.innerText = "STALL"; ui.warn.style.background = "rgba(255,0,0,0.8)"; ui.warn.style.display = 'block';
+                if(!state.isStalling) { playVoice("Stall, Stall"); state.isStalling = true; }
+            } else {
+                state.pitch += (targetPitch - state.pitch) * dt * 2;
+                state.isStalling = false;
+            }
+
+            state.verticalSpeed += (((verticalLift - state.weight) / state.mass * 50) + (state.ias * Math.sin(state.pitch * Math.PI / 180) * 10) - state.verticalSpeed) * dt * 2;
+            state.alt += state.verticalSpeed * dt;
+            
+            if (state.alt <= 0) { 
+                state.alt = 0; 
+                if (state.verticalSpeed < -700) { 
+                    ui.warn.innerText = "CRASH"; ui.warn.style.background = "rgba(255,0,0,0.8)"; ui.warn.style.display = 'block';
+                } else if(state.ias > 20) { 
+                    ui.warn.innerText = "TOUCHDOWN"; ui.warn.style.background = "rgba(0,255,0,0.8)"; ui.warn.style.display = 'block';
+                    state.verticalSpeed = 0; state.pitch = 0; state.actualRoll = 0; state.ias *= 0.99;
+                    if(state.ap.cmd) { ui.apCmd.click(); } 
+                    if(state.ap.at) { ui.apAt.click(); setThrust(0); } 
+                } else {
+                    ui.warn.style.display = 'none'; 
+                }
+            } else if (!state.isStalling) {
+                ui.warn.style.display = 'none';
+            }
+
+            // --- 렌더링 ---
+            ui.rollCont.style.transform = `translate(-50%, -50%) rotate(${-state.actualRoll}deg)`;
+            ui.pitchCont.style.transform = `translateY(${state.pitch * 4}px)`;
+            
+            let fpmV = -(state.verticalSpeed / Math.max(state.ias, 50) * 500); 
+            ui.fpm.style.transform = `translate(calc(-50% + ${state.yawTarget * 3}px), calc(-50% + ${fpmV}px))`;
+
+            ui.ias.innerText = Math.round(state.ias); ui.alt.innerText = Math.round(state.alt);
+            ui.hdg.innerText = Math.round(state.heading).toString().padStart(3, '0');
+
+            if(distToArr < 50 && state.alt > 0) {
+                ui.ilsV.style.display = 'block'; ui.ilsV.style.transform = `translate(calc(-50% + ${ilsHdgDev * 5}px), -50%)`;
+                ui.ilsH.style.display = 'block'; ui.ilsH.style.transform = `translate(-50%, calc(-50% - ${ilsAltDev * 0.05}px))`;
+            } else {
+                ui.ilsV.style.display = 'none'; ui.ilsH.style.display = 'none';
+            }
+
+            if(state.engOn) engineOsc.frequency.setTargetAtTime(100 + (state.thrust * 1.5), audioCtx.currentTime, 0.1);
+
+            ctx.clearRect(0, 0, ui.mapCanvas.width, ui.mapCanvas.height);
+            for(const code in AIRPORTS) {
+                const pt = AIRPORTS[code]; ctx.fillStyle = code === state.route.arr ? '#FF00FF' : 'white';
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 3, 0, Math.PI*2); ctx.fill();
+                ctx.font = "10px monospace"; ctx.fillText(code, pt.x + 5, pt.y + 3);
+            }
+            if(state.route.arr) {
+                ctx.strokeStyle = '#FF00FF'; ctx.setLineDash([5, 5]);
+                ctx.beginPath(); ctx.moveTo(AIRPORTS[state.route.dep].x, AIRPORTS[state.route.dep].y); 
+                ctx.lineTo(AIRPORTS[state.route.arr].x, AIRPORTS[state.route.arr].y); ctx.stroke(); ctx.setLineDash([]);
+            }
+            ctx.save(); ctx.translate(state.posX, state.posY); ctx.rotate(state.heading * Math.PI / 180);
+            ctx.fillStyle = '#00FF00'; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.fill(); ctx.restore();
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
