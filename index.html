@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boeing 스타일 비행 물리 시뮬레이터</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --boeing-green: #00FF00;
+            --boeing-cyan: #00FFFF;
+            --boeing-magenta: #FF00FF;
+            --boeing-bg: #0a0a0a;
+            --sky-blue: #0066cc;
+            --ground-brown: #8b5a2b;
+        }
+
+        body {
+            background-color: #000;
+            color: white;
+            font-family: 'Share Tech Mono', monospace;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
+        }
+
+        h1 {
+            color: var(--boeing-cyan);
+            margin-top: 0;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        /* 메인 시뮬레이터 컨테이너 */
+        #sim-container {
+            background-color: var(--boeing-bg);
+            border: 2px solid #333;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 1. 상단/중단: 자세계(PFD) 및 계기판 */
+        #pfd {
+            position: relative;
+            height: 350px;
+            background-color: #111;
+            overflow: hidden;
+            border-bottom: 2px solid #333;
+        }
+
+        /* 인공 지평선 */
+        #horizon-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 800px;
+            height: 800px;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s linear;
+        }
+
+        #sky {
+            width: 100%;
+            height: 50%;
+            background: linear-gradient(to bottom, #003399, var(--sky-blue));
+        }
+
+        #ground {
+            width: 100%;
+            height: 50%;
+            background: linear-gradient(to top, #4a3018, var(--ground-brown));
+            border-top: 2px solid white;
+        }
+
+        /* 피치 눈금 (Pitch Ladder) */
+        .pitch-line {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            border-top: 2px solid white;
+            text-align: center;
+            color: white;
+            font-size: 0.8rem;
+            line-height: 0;
+        }
+        .pitch-line span {
+            background: var(--sky-blue);
+            padding: 0 4px;
+        }
+
+        /* 중앙 비행기 심볼 */
+        #plane-symbol {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120px;
+            height: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .wing { width: 40px; height: 4px; background-color: yellow; border: 1px solid black; }
+        .center-dot { width: 10px; height: 10px; background-color: transparent; border: 3px solid yellow; border-radius: 50%; box-sizing: border-box; }
+
+        /* 속도계 및 고도계 테이프 */
+        .tape {
+            position: absolute;
+            top: 10%;
+            bottom: 10%;
+            width: 70px;
+            background-color: rgba(30, 30, 30, 0.7);
+            border: 1px solid white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            z-index: 10;
+        }
+        #ias-tape { left: 10px; }
+        #alt-tape { right: 10px; }
+        
+        .tape-label {
+            color: var(--boeing-cyan);
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+        }
+        .tape-value {
+            color: var(--boeing-green);
+            font-weight: bold;
+            font-size: 1.4rem;
+            border: 2px solid white;
+            padding: 5px;
+            background: black;
+            width: 80%;
+            text-align: center;
+        }
+
+        /* 실속(Stall) 경고 UI */
+        #stall-warning {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: red;
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 20px;
+            border: 2px solid red;
+            display: none; /* 기본 숨김 */
+            animation: blink 0.4s infinite;
+            z-index: 20;
+        }
+
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+
+        /* 중단: 피드백 패널 */
+        #status-panel {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #1a1a1a;
+            border-bottom: 2px solid #333;
+        }
+        #feedback {
+            color: var(--boeing-cyan);
+            font-size: 1rem;
+            width: 60%;
+        }
+        #lift-status {
+            color: var(--boeing-green);
+            font-size: 1rem;
+            text-align: right;
+            width: 35%;
+        }
+
+        /* 하단: 슬라이더 컨트롤 */
+        #controls {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .control-group label {
+            width: 80px;
+            color: var(--boeing-magenta);
+            font-weight: bold;
+        }
+        .control-group input[type="range"] {
+            flex-grow: 1;
+            margin: 0 15px;
+            cursor: pointer;
+        }
+        .control-value {
+            width: 50px;
+            text-align: right;
+            color: white;
+        }
+
+        /* 초기 시작 오버레이 (Web Audio 권한 위함) */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #start-btn {
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            background: var(--boeing-green);
+            color: black;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+        #start-btn:hover { background: white; }
+
+    </style>
+</head>
+<body>
+
+    <h1>BOEING FLIGHT PHYSICS SIM</h1>
+
+    <div id="sim-container">
+        
+        <div id="start-screen">
+            <button id="start-btn">비행 시작 (START FLIGHT)</button>
+        </div>
+
+        <!-- 상단 PFD 화면 -->
+        <div id="pfd">
+            <div id="horizon-container">
+                <div id="sky"></div>
+                <div id="ground"></div>
+                <!-- 피치 눈금 생성 (JS에서 추가) -->
+                <div id="pitch-lines"></div>
+            </div>
+
+            <!-- 중앙 비행기 기준선 -->
+            <div id="plane-symbol">
+                <div class="wing"></div>
+                <div class="center-dot"></div>
+                <div class="wing"></div>
+            </div>
+
+            <div id="ias-tape" class="tape">
+                <div class="tape-label">IAS</div>
+                <div id="ias-val" class="tape-value">250</div>
+            </div>
+
+            <div id="alt-tape" class="tape">
+                <div class="tape-label">ALT</div>
+                <div id="alt-val" class="tape-value">5000</div>
+            </div>
+
+            <div id="stall-warning">STALL</div>
+        </div>
+
+        <!-- 중단 피드백/상태 -->
+        <div id="status-panel">
+            <div id="feedback">정상 비행 중입니다.</div>
+            <div id="lift-status">LIFT: 100%</div>
+        </div>
+
+        <!-- 하단 컨트롤 -->
+        <div id="controls">
+            <div class="control-group">
+                <label>THRUST</label>
+                <input type="range" id="thrust" min="0" max="100" value="50">
+                <div id="thrust-val" class="control-value">50%</div>
+            </div>
+            <div class="control-group">
+                <label>FLAPS</label>
+                <input type="range" id="flaps" min="0" max="30" step="10" value="0">
+                <div id="flaps-val" class="control-value">0°</div>
+            </div>
+            <div class="control-group">
+                <label>CG POS</label>
+                <input type="range" id="cg" min="-10" max="10" step="1" value="0">
+                <div id="cg-val" class="control-value">0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 물리 및 상태 변수 ---
+        let state = {
+            ias: 250,        // 지시 대기속도 (Knots)
+            alt: 5000,       // 고도 (Feet)
+            pitch: 0,        // 기수 각도 (Degrees)
+            thrust: 50,      // 추력 (0-100%)
+            flaps: 0,        // 플랩 (0, 10, 20, 30도)
+            cg: 0,           // 무게중심 (-10 선수, +10 선미)
+            mass: 100,       // 기체 질량 상수
+            weight: 1000,    // 기체 중량 상수
+            isStalling: false
+        };
+
+        // --- DOM 요소 참조 ---
+        const ui = {
+            horizon: document.getElementById('horizon-container'),
+            ias: document.getElementById('ias-val'),
+            alt: document.getElementById('alt-val'),
+            liftStatus: document.getElementById('lift-status'),
+            feedback: document.getElementById('feedback'),
+            stallWarn: document.getElementById('stall-warning'),
+            inpThrust: document.getElementById('thrust'),
+            inpFlaps: document.getElementById('flaps'),
+            inpCG: document.getElementById('cg'),
+            valThrust: document.getElementById('thrust-val'),
+            valFlaps: document.getElementById('flaps-val'),
+            valCG: document.getElementById('cg-val'),
+            startScreen: document.getElementById('start-screen'),
+            startBtn: document.getElementById('start-btn'),
+            pitchLines: document.getElementById('pitch-lines')
+        };
+
+        // --- Web Audio API (실속 경고음) ---
+        let audioCtx;
+        let beepInterval;
+
+        ui.startBtn.addEventListener('click', () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            ui.startScreen.style.display = 'none';
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        });
+
+        function playStallBeep() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime); 
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // --- 피치 눈금 (배경) 그리기 ---
+        for(let i = -60; i <= 60; i += 10) {
+            if(i === 0) continue;
+            let line = document.createElement('div');
+            line.className = 'pitch-line';
+            line.style.top = `calc(50% - ${i * 4}px)`; // 1도당 4px
+            line.style.width = i % 20 === 0 ? '80px' : '40px';
+            line.innerHTML = `<span>${Math.abs(i)}</span>`;
+            ui.pitchLines.appendChild(line);
+        }
+
+        // --- 입력 이벤트 바인딩 ---
+        ui.inpThrust.addEventListener('input', (e) => { state.thrust = parseInt(e.target.value); ui.valThrust.innerText = state.thrust + '%'; });
+        ui.inpFlaps.addEventListener('input', (e) => { state.flaps = parseInt(e.target.value); ui.valFlaps.innerText = state.flaps + '°'; });
+        ui.inpCG.addEventListener('input', (e) => { state.cg = parseInt(e.target.value); ui.valCG.innerText = state.cg; });
+
+        // --- 메인 게임 루프 ---
+        let lastTime = 0;
+        function gameLoop(time) {
+            const dt = Math.min((time - lastTime) / 1000, 0.1); // 최대 0.1초 (Delta Time)
+            lastTime = time;
+
+            // 1. 역학 계산 (학생들 학습용 물리 모델)
+            
+            // 무게 중심(CG)에 따른 목표 피치 (CG가 뒤로가면(+), 기수가 들림)
+            const targetPitch = state.cg * 1.5;
+            
+            // 양력 계산: L = V^2 * 상수 * 플랩보너스
+            // 플랩은 양력을 증가시키지만 한계가 있음.
+            let lift = (Math.pow(state.ias, 2) / 62500) * state.weight * (1 + state.flaps * 0.015);
+            
+            // 항력 계산: D = V^2 * 상수 * 플랩저항
+            // 플랩을 내리면 공기저항이 커짐
+            let drag = (Math.pow(state.ias, 2) / 62500) * 250 * (1 + state.flaps * 0.03);
+            
+            // 중력의 가속도 성분 (기수가 들리면 중력이 속도를 늦춤)
+            let gravityAccel = state.weight * Math.sin(state.pitch * Math.PI / 180);
+            
+            // 가속도 = (추력 - 항력 - 중력성분) / 질량
+            let thrustForce = state.thrust * 5; // 50%일때 250
+            let accel = (thrustForce - drag - gravityAccel) / state.mass;
+            
+            // 속도 업데이트
+            state.ias += accel * dt * 10;
+            if(state.ias < 0) state.ias = 0;
+
+            // 실속(Stall) 한계 속도 계산 (플랩을 내리면 실속 속도가 낮아져 저속비행 가능)
+            let stallSpeed = 160 - (state.flaps * 1.2);
+            
+            if (state.ias < stallSpeed) {
+                // 실속 발생! 양력이 급감하고 기수가 떨어짐
+                lift *= 0.3; 
+                state.pitch -= 20 * dt; 
+                if (!state.isStalling) {
+                    state.isStalling = true;
+                    ui.stallWarn.style.display = 'block';
+                    beepInterval = setInterval(playStallBeep, 400);
+                }
+            } else {
+                // 정상 비행 - 기수는 CG와 양력의 영향을 받아 목표 피치로 이동
+                state.pitch += (targetPitch - state.pitch) * dt * 2;
+                if (state.isStalling) {
+                    state.isStalling = false;
+                    ui.stallWarn.style.display = 'none';
+                    clearInterval(beepInterval);
+                }
+            }
+
+            // 고도 업데이트 (승강률: 양력과 중력의 차이 + 기수각에 따른 속도 성분)
+            let verticalSpeed = ((lift - state.weight) / state.mass * 50) + (state.ias * Math.sin(state.pitch * Math.PI / 180) * 15);
+            state.alt += verticalSpeed * dt;
+            if (state.alt < 0) { state.alt = 0; verticalSpeed = 0; } // 지면 충돌 방지
+
+            // --- UI 업데이트 ---
+            
+            // PFD 지평선 이동 (1도당 4픽셀 이동)
+            ui.horizon.style.transform = `translate(-50%, calc(-50% + ${state.pitch * 4}px))`;
+            
+            // 테이프 숫자 업데이트
+            ui.ias.innerText = Math.round(state.ias);
+            ui.alt.innerText = Math.round(state.alt);
+            
+            // 양력 상태 및 피드백 텍스트
+            let liftRatio = Math.round((lift / state.weight) * 100);
+            ui.liftStatus.innerText = `LIFT: ${liftRatio}%`;
+            ui.liftStatus.style.color = liftRatio < 80 ? 'red' : (liftRatio > 120 ? 'orange' : 'var(--boeing-green)');
+
+            if (state.isStalling) {
+                ui.feedback.innerText = "⚠ 실속(Stall)! 기수를 내리고(CG 0 이하) 추력을 최대로 올리세요!";
+                ui.feedback.style.color = "red";
+            } else if (state.ias > 340) {
+                ui.feedback.innerText = "⚠ 과속 주의! 추력을 줄이거나 기수를 살짝 올리세요.";
+                ui.feedback.style.color = "orange";
+            } else if (verticalSpeed > 20) {
+                ui.feedback.innerText = "상승 중 (Climbing)... 속도에 주의하세요.";
+                ui.feedback.style.color = "var(--boeing-cyan)";
+            } else if (verticalSpeed < -20) {
+                ui.feedback.innerText = "하강 중 (Descending)... 양력을 확보하세요.";
+                ui.feedback.style.color = "var(--boeing-cyan)";
+            } else {
+                ui.feedback.innerText = "안정적인 수평 비행입니다.";
+                ui.feedback.style.color = "var(--boeing-green)";
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
