@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Flight Physics Sim</title>
+    <title>Advanced Flight Physics Sim with FPM & Key Control</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
@@ -146,7 +146,7 @@
         .pitch-line span { background: var(--theme-bg); padding: 0 4px; }
         body.fighter-mode .pitch-line span { background: transparent; }
 
-        /* 중앙 비행기 심볼 (Boeing vs Fighter FPM) */
+        /* 중앙 비행기 심볼 (기수 방향) */
         #plane-symbol {
             position: absolute;
             top: 50%; left: 50%;
@@ -162,11 +162,30 @@
         
         body.fighter-mode .wing { height: 2px; border: none; }
         body.fighter-mode .center-dot { border-radius: 50%; border-width: 2px; position: relative; }
-        /* 전투기 모드 FPM 수직 꼬리 날개 */
-        body.fighter-mode .center-dot::after {
+
+        /* FPM (Flight Path Marker) 심볼 - 모든 모드에서 표시 */
+        #fpm {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 24px; height: 24px;
+            border: 2px solid var(--plane-color);
+            border-radius: 50%;
+            box-sizing: border-box;
+            z-index: 25; /* 기수 심볼 위에 표시 */
+            transform: translate(-50%, -50%); /* 초기 위치 중심 */
+            will-change: transform;
+        }
+        /* FPM 수직 꼬리 날개 */
+        #fpm::after {
             content: ''; position: absolute;
-            top: -10px; left: 3px;
-            width: 2px; height: 8px; background-color: var(--plane-color);
+            top: -12px; left: calc(50% - 1px);
+            width: 2px; height: 10px; background-color: var(--plane-color);
+        }
+        /* FPM 수평 날개 */
+        #fpm::before {
+            content: ''; position: absolute;
+            top: calc(50% - 1px); left: -10px;
+            width: 44px; height: 2px; background-color: var(--plane-color);
         }
 
         /* 테이프 (속도, 고도, 방위각) */
@@ -237,6 +256,8 @@
         .control-group { display: flex; align-items: center; justify-content: space-between; }
         .control-group label { width: 70px; color: var(--boeing-magenta); font-weight: bold; font-size: 0.9rem; }
         .control-group input[type="range"] { flex-grow: 1; margin: 0 10px; cursor: pointer; }
+        /* 키보드 포커스 스타일 */
+        .control-group input[type="range"]:focus { outline: 2px solid var(--theme-secondary); outline-offset: 2px; }
         .control-value { width: 45px; text-align: right; color: white; font-size: 0.9rem; }
 
         /* 시작 화면 */
@@ -278,7 +299,8 @@
                 <div class="wing"></div>
             </div>
 
-            <!-- 계기판 테이프 -->
+            <div id="fpm"></div>
+
             <div id="hdg-tape" class="tape">HDG <span id="hdg-val" style="margin-left:10px;">360</span></div>
 
             <div id="ias-tape" class="tape tape-vertical">
@@ -294,37 +316,35 @@
             <div id="stall-warning">STALL</div>
         </div>
 
-        <!-- 피드백 -->
         <div id="status-panel">
-            <div id="feedback">이륙 준비 완료.</div>
+            <div id="feedback">이륙 준비 완료. 슬라이더 클릭 후 키보드로 조작 가능.</div>
             <div id="lift-status">V-LIFT: 100%</div>
         </div>
 
-        <!-- 슬라이더 컨트롤 -->
         <div id="controls">
             <div class="control-group">
                 <label>THRUST</label>
-                <input type="range" id="thrust" min="0" max="100" value="50">
+                <input type="range" id="thrust" min="0" max="100" value="50" tabindex="0">
                 <div id="thrust-val" class="control-value">50%</div>
             </div>
             <div class="control-group">
                 <label>PITCH(CG)</label>
-                <input type="range" id="cg" min="-15" max="15" step="1" value="0">
+                <input type="range" id="cg" min="-15" max="15" step="1" value="0" tabindex="0">
                 <div id="cg-val" class="control-value">0</div>
             </div>
             <div class="control-group">
                 <label>ROLL(Ail)</label>
-                <input type="range" id="roll" min="-60" max="60" step="1" value="0">
+                <input type="range" id="roll" min="-60" max="60" step="1" value="0" tabindex="0">
                 <div id="roll-val" class="control-value">0°</div>
             </div>
             <div class="control-group">
                 <label>YAW(Rud)</label>
-                <input type="range" id="yaw" min="-30" max="30" step="1" value="0">
+                <input type="range" id="yaw" min="-30" max="30" step="1" value="0" tabindex="0">
                 <div id="yaw-val" class="control-value">0°</div>
             </div>
             <div class="control-group" style="grid-column: span 2;">
                 <label>FLAPS</label>
-                <input type="range" id="flaps" min="0" max="30" step="10" value="0">
+                <input type="range" id="flaps" min="0" max="30" step="10" value="0" tabindex="0">
                 <div id="flaps-val" class="control-value">0°</div>
             </div>
         </div>
@@ -336,13 +356,14 @@
             ias: 250,        
             alt: 5000,       
             pitch: 0,        
-            heading: 0,      // 방위각 (0~359)
+            heading: 0,      
             thrust: 50,      
             flaps: 0,        
-            cg: 0,           // Pitch 제어
-            rollTarget: 0,   // 슬라이더 롤 입력
-            actualRoll: 0,   // 물리적 롤 (Bank angle)
-            yawTarget: 0,    // 러더 입력
+            cg: 0,           
+            rollTarget: 0,   
+            actualRoll: 0,   
+            yawTarget: 0,    
+            verticalSpeed: 0, // FPM 계산용
             mass: 100,       
             weight: 1000,    
             isStalling: false
@@ -351,6 +372,7 @@
         const ui = {
             rollCont: document.getElementById('roll-container'),
             pitchCont: document.getElementById('pitch-container'),
+            fpm: document.getElementById('fpm'), // FPM DOM 추가
             ias: document.getElementById('ias-val'),
             alt: document.getElementById('alt-val'),
             hdg: document.getElementById('hdg-val'),
@@ -399,7 +421,7 @@
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.type = 'sawtooth'; // 전투기 스타일의 더 날카로운 경고음
+            osc.type = 'sawtooth'; 
             osc.frequency.setValueAtTime(450, audioCtx.currentTime); 
             gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
@@ -411,18 +433,79 @@
             if(i === 0) continue;
             let line = document.createElement('div');
             line.className = 'pitch-line';
-            line.style.top = `calc(50% - ${i * 4}px)`; // 1도당 4px
+            line.style.top = `calc(50% - ${i * 4}px)`; // 1도당 4px 배율
             line.style.width = i % 20 === 0 ? '100px' : '50px';
             line.innerHTML = `<span>${Math.abs(i)}</span>`;
             ui.pitchLines.appendChild(line);
         }
 
-        // --- 입력 이벤트 ---
-        ui.inpThrust.addEventListener('input', (e) => { state.thrust = parseInt(e.target.value); ui.valThrust.innerText = state.thrust + '%'; });
-        ui.inpFlaps.addEventListener('input', (e) => { state.flaps = parseInt(e.target.value); ui.valFlaps.innerText = state.flaps + '°'; });
-        ui.inpCG.addEventListener('input', (e) => { state.cg = parseInt(e.target.value); ui.valCG.innerText = state.cg; });
-        ui.inpRoll.addEventListener('input', (e) => { state.rollTarget = parseInt(e.target.value); ui.valRoll.innerText = state.rollTarget + '°'; });
-        ui.inpYaw.addEventListener('input', (e) => { state.yawTarget = parseInt(e.target.value); ui.valYaw.innerText = state.yawTarget + '°'; });
+        // --- 입력 업데이트 함수 (마우스 및 키보드 공용) ---
+        function updateThrust(val) { state.thrust = Math.max(0, Math.min(100, val)); ui.valThrust.innerText = state.thrust + '%'; ui.inpThrust.value = state.thrust; }
+        function updateFlaps(val) { state.flaps = Math.max(0, Math.min(30, val)); ui.valFlaps.innerText = state.flaps + '°'; ui.inpFlaps.value = state.flaps; }
+        function updateCG(val) { state.cg = Math.max(-15, Math.min(15, val)); ui.valCG.innerText = state.cg; ui.inpCG.value = state.cg; }
+        function updateRoll(val) { state.rollTarget = Math.max(-60, Math.min(60, val)); ui.valRoll.innerText = state.rollTarget + '°'; ui.inpRoll.value = state.rollTarget; }
+        function updateYaw(val) { state.yawTarget = Math.max(-30, Math.min(30, val)); ui.valYaw.innerText = state.yawTarget + '°'; ui.inpYaw.value = state.yawTarget; }
+
+        // --- 마우스 입력 이벤트 ---
+        ui.inpThrust.addEventListener('input', (e) => updateThrust(parseInt(e.target.value)));
+        ui.inpFlaps.addEventListener('input', (e) => updateFlaps(parseInt(e.target.value)));
+        ui.inpCG.addEventListener('input', (e) => updateCG(parseInt(e.target.value)));
+        ui.inpRoll.addEventListener('input', (e) => updateRoll(parseInt(e.target.value)));
+        ui.inpYaw.addEventListener('input', (e) => updateYaw(parseInt(e.target.value)));
+
+        // --- 키보드 조작 핸들러 ---
+        function handleKeyboardControl(e, type) {
+            if (document.activeElement !== e.target) return; // 포커스된 슬라이더만 조작
+
+            let preventDefault = true;
+            switch (type) {
+                case 'thrust':
+                    if (e.key === 'ArrowUp') updateThrust(state.thrust + 5);
+                    else if (e.key === 'ArrowDown') updateThrust(state.thrust - 5);
+                    else if (e.key === 'PageUp') updateThrust(state.thrust + 10);
+                    else if (e.key === 'PageDown') updateThrust(state.thrust - 10);
+                    else if (e.key === 'Home') updateThrust(0);
+                    else if (e.key === 'End') updateThrust(100);
+                    else preventDefault = false;
+                    break;
+                case 'cg':
+                    if (e.key === 'ArrowUp') updateCG(state.cg + 1);
+                    else if (e.key === 'ArrowDown') updateCG(state.cg - 1);
+                    else if (e.key === 'PageUp') updateCG(state.cg + 5);
+                    else if (e.key === 'PageDown') updateCG(state.cg - 5);
+                    else if (e.key === 'Home') updateCG(0);
+                    else preventDefault = false;
+                    break;
+                case 'roll':
+                    if (e.key === 'ArrowRight') updateRoll(state.rollTarget + 2);
+                    else if (e.key === 'ArrowLeft') updateRoll(state.rollTarget - 2);
+                    else if (e.key === 'PageUp') updateRoll(state.rollTarget + 10);
+                    else if (e.key === 'PageDown') updateRoll(state.rollTarget - 10);
+                    else if (e.key === 'Home') updateRoll(0);
+                    else preventDefault = false;
+                    break;
+                case 'yaw':
+                    if (e.key === 'ArrowRight') updateYaw(state.yawTarget + 1);
+                    else if (e.key === 'ArrowLeft') updateYaw(state.yawTarget - 1);
+                    else if (e.key === 'PageUp') updateYaw(state.yawTarget + 5);
+                    else if (e.key === 'PageDown') updateYaw(state.yawTarget - 5);
+                    else if (e.key === 'Home') updateYaw(0);
+                    else preventDefault = false;
+                    break;
+                case 'flaps':
+                    if (e.key === 'ArrowUp') updateFlaps(state.flaps + 10);
+                    else if (e.key === 'ArrowDown') updateFlaps(state.flaps - 10);
+                    else preventDefault = false;
+                    break;
+            }
+            if (preventDefault) e.preventDefault(); // 브라우저 기본 스크롤 방지
+        }
+
+        ui.inpThrust.addEventListener('keydown', (e) => handleKeyboardControl(e, 'thrust'));
+        ui.inpCG.addEventListener('keydown', (e) => handleKeyboardControl(e, 'cg'));
+        ui.inpRoll.addEventListener('keydown', (e) => handleKeyboardControl(e, 'roll'));
+        ui.inpYaw.addEventListener('keydown', (e) => handleKeyboardControl(e, 'yaw'));
+        ui.inpFlaps.addEventListener('keydown', (e) => handleKeyboardControl(e, 'flaps'));
 
         // --- 메인 게임 루프 ---
         let lastTime = 0;
@@ -440,12 +523,12 @@
             // 총 양력 계산
             let totalLift = (Math.pow(state.ias, 2) / 62500) * state.weight * (1 + state.flaps * 0.015);
             
-            // 핵심 물리: 롤링 시 수직 양력(Vertical Lift)이 감소함! (고도 유지를 위해 Pitch를 올려야 함)
+            // 수직 양력 감소 (Bank angle 효과)
             let verticalLift = totalLift * Math.cos(rollRad);
             let horizontalLift = totalLift * Math.sin(rollRad); 
 
             // 항력 및 가속도 계산
-            let drag = (Math.pow(state.ias, 2) / 62500) * 250 * (1 + state.flaps * 0.03) + (Math.abs(state.yawTarget) * 2); // 요우(러더) 조작 시 항력 추가
+            let drag = (Math.pow(state.ias, 2) / 62500) * 250 * (1 + state.flaps * 0.03) + (Math.abs(state.yawTarget) * 2); 
             let gravityAccel = state.weight * Math.sin(state.pitch * Math.PI / 180);
             let thrustForce = state.thrust * 5; 
             
@@ -454,7 +537,6 @@
             if(state.ias < 0) state.ias = 0;
 
             // 선회율(Turn Rate) 및 방위각(Heading) 계산
-            // 선회율 ∝ 수평 양력 / 속도 + 러더 입력
             let turnRate = (horizontalLift / (state.mass * Math.max(state.ias, 50)) * 500) + (state.yawTarget * 0.5);
             state.heading += turnRate * dt;
             if(state.heading >= 360) state.heading -= 360;
@@ -479,10 +561,10 @@
                 }
             }
 
-            // 고도 업데이트 (수직 양력을 기준으로 계산)
-            let verticalSpeed = ((verticalLift - state.weight) / state.mass * 50) + (state.ias * Math.sin(state.pitch * Math.PI / 180) * 15);
-            state.alt += verticalSpeed * dt;
-            if (state.alt < 0) { state.alt = 0; verticalSpeed = 0; } 
+            // 고도 및 수직 속도 업데이트
+            state.verticalSpeed = ((verticalLift - state.weight) / state.mass * 50) + (state.ias * Math.sin(state.pitch * Math.PI / 180) * 15);
+            state.alt += state.verticalSpeed * dt;
+            if (state.alt < 0) { state.alt = 0; state.verticalSpeed = 0; } 
 
             // --- UI 업데이트 ---
             
@@ -490,6 +572,16 @@
             ui.rollCont.style.transform = `translate(-50%, -50%) rotate(${-state.actualRoll}deg)`;
             ui.pitchCont.style.transform = `translateY(${state.pitch * 4}px)`;
             
+            // FPM (Flight Path Marker) 위치 업데이트 (모든 모드 공용)
+            // 핵심 물리: FPM은 기수 심볼에서 비행 경로 벡터만큼 오프셋됨
+            // 수직 오프셋: 수직 속도에 비례 (양수 VS -> FPM 아래 오프셋). 피치 배율(1도당 4px)에 맞춰 스케일링.
+            // 단순화된 계산: -(verticalSpeed / ias * 상수). 음수를 곱하는 이유는 verticalSpeed가 양수일 때 FPM이 기수 아래에 있어야 하기 때문.
+            let fpmVerticalOffset = -(state.verticalSpeed / Math.max(state.ias, 50) * 500); 
+            // 수평 오프셋: 요우(러더) 입력에 비례
+            let fpmHorizontalOffset = state.yawTarget * 3; // 단순 배율 적용
+
+            ui.fpm.style.transform = `translate(calc(-50% + ${fpmHorizontalOffset}px), calc(-50% + ${fpmVerticalOffset}px))`;
+
             // 계기판 텍스트
             ui.ias.innerText = Math.round(state.ias);
             ui.alt.innerText = Math.round(state.alt);
