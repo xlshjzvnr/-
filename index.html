@@ -3,43 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Flight Physics Sim with FPM & Key Control</title>
+    <title>Full Flight Simulator in HTML</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
         :root {
-            /* Boeing Colors */
             --boeing-green: #00FF00;
             --boeing-cyan: #00FFFF;
             --boeing-magenta: #FF00FF;
-            --boeing-bg: #0a0a0a;
-            --sky-blue: #0066cc;
-            --ground-brown: #8b5a2b;
-            --tape-bg: rgba(30, 30, 30, 0.7);
-            --tape-border: white;
-            --plane-color: yellow;
-            
-            /* Theme Variables (Default to Boeing) */
-            --theme-primary: var(--boeing-green);
-            --theme-secondary: var(--boeing-cyan);
-            --theme-sky: linear-gradient(to bottom, #003399, var(--sky-blue));
-            --theme-ground: linear-gradient(to top, #4a3018, var(--ground-brown));
-            --theme-horizon: 2px solid white;
             --theme-bg: #111;
-        }
-
-        /* 전투기 HUD 모드 컬러 변수 */
-        body.fighter-mode {
-            --theme-primary: #00FF00;
-            --theme-secondary: #00FF00;
-            --theme-sky: transparent;
-            --theme-ground: transparent;
-            --theme-horizon: 2px dashed #00FF00;
-            --theme-bg: #001a00; /* 어두운 녹색 배경 */
-            --tape-bg: transparent;
-            --tape-border: #00FF00;
-            --plane-color: #00FF00;
-            --boeing-magenta: #00FF00;
+            --tape-bg: rgba(30, 30, 30, 0.7);
         }
 
         body {
@@ -49,485 +22,359 @@
             margin: 0;
             padding: 20px;
             display: flex;
-            flex-direction: column;
-            align-items: center;
+            justify-content: center;
+            gap: 20px;
             user-select: none;
         }
 
-        .header-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            max-width: 600px;
-            margin-bottom: 10px;
-        }
-
-        h1 {
-            color: var(--theme-secondary);
-            margin: 0;
-            font-size: 1.3rem;
-        }
-
-        #theme-btn {
-            background: #333;
-            color: white;
-            border: 1px solid var(--theme-primary);
-            padding: 5px 10px;
-            cursor: pointer;
-            font-family: inherit;
-            transition: all 0.3s;
-        }
-        #theme-btn:hover { background: var(--theme-primary); color: black; }
-
-        /* 메인 시뮬레이터 컨테이너 */
-        #sim-container {
-            background-color: var(--boeing-bg);
+        /* 왼쪽 패널: FMC & 시스템 & 맵 */
+        #left-panel {
+            width: 250px;
+            background: #1a1a1a;
             border: 2px solid #333;
             border-radius: 10px;
-            width: 100%;
-            max-width: 600px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel-title { color: var(--boeing-cyan); font-size: 1.2rem; margin: 0 0 10px 0; text-align: center; border-bottom: 1px solid #333; padding-bottom: 5px; }
+
+        .sys-btn {
+            background: #333; color: white; border: 1px solid #555;
+            padding: 10px; font-family: inherit; font-weight: bold; cursor: pointer;
+        }
+        .sys-btn.on { background: var(--boeing-green); color: black; }
+
+        .fmc-group { display: flex; flex-direction: column; gap: 5px; }
+        .fmc-group select, .fmc-group button {
+            background: black; color: var(--boeing-green); border: 1px solid var(--boeing-green);
+            padding: 5px; font-family: inherit;
+        }
+        .fmc-group button:hover { background: var(--boeing-green); color: black; cursor: pointer; }
+
+        #nav-map { background: #001100; border: 1px solid var(--boeing-green); width: 100%; height: 250px; }
+
+        /* 오른쪽 패널: HUD 및 조종간 */
+        #right-panel {
+            width: 600px;
+            background: #0a0a0a;
+            border: 2px solid #333;
+            border-radius: 10px;
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
-            overflow: hidden;
-            position: relative;
+            display: flex; flex-direction: column;
         }
 
-        /* 상단 PFD (Primary Flight Display) / HUD */
-        #pfd {
-            position: relative;
-            height: 380px;
-            background-color: var(--theme-bg);
-            overflow: hidden;
-            border-bottom: 2px solid #333;
-        }
+        /* 배터리가 꺼져있을 때 화면 끄기 */
+        #pfd-screen { position: relative; transition: opacity 0.5s; opacity: 0; }
+        #pfd-screen.powered { opacity: 1; }
 
-        /* 롤링을 위한 컨테이너 */
-        #roll-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 1500px; /* 회전 시 모서리가 보이지 않게 크게 설정 */
-            height: 1500px;
-            transform-origin: center center;
-            transform: translate(-50%, -50%) rotate(0deg);
-            will-change: transform;
-        }
+        #pfd { position: relative; height: 380px; background-color: var(--theme-bg); overflow: hidden; border-bottom: 2px solid #333; }
 
-        /* 피치를 위한 컨테이너 */
-        #pitch-container {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            transform: translateY(0px);
-            will-change: transform;
-        }
+        #roll-container { position: absolute; top: 50%; left: 50%; width: 1500px; height: 1500px; transform: translate(-50%, -50%); }
+        #pitch-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #sky { width: 100%; height: 50%; background: linear-gradient(to bottom, #003399, #0066cc); }
+        #ground { width: 100%; height: 50%; background: linear-gradient(to top, #4a3018, #8b5a2b); border-top: 2px solid white; }
 
-        #sky {
-            width: 100%; height: 50%;
-            background: var(--theme-sky);
-        }
-
-        #ground {
-            width: 100%; height: 50%;
-            background: var(--theme-ground);
-            border-top: var(--theme-horizon);
-        }
-
-        /* 피치 눈금 */
-        .pitch-line {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            border-top: 2px solid var(--tape-border);
-            text-align: center;
-            color: var(--tape-border);
-            font-size: 0.8rem;
-            line-height: 0;
-        }
+        .pitch-line { position: absolute; left: 50%; transform: translateX(-50%); border-top: 2px solid white; text-align: center; color: white; font-size: 0.8rem; line-height: 0; }
         .pitch-line span { background: var(--theme-bg); padding: 0 4px; }
-        body.fighter-mode .pitch-line span { background: transparent; }
 
-        /* 중앙 비행기 심볼 (기수 방향) */
-        #plane-symbol {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 120px; height: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 15;
-        }
-        .wing { width: 40px; height: 4px; background-color: var(--plane-color); border: 1px solid black; }
-        .center-dot { width: 12px; height: 12px; background-color: transparent; border: 3px solid var(--plane-color); border-radius: 10%; box-sizing: border-box; }
-        
-        body.fighter-mode .wing { height: 2px; border: none; }
-        body.fighter-mode .center-dot { border-radius: 50%; border-width: 2px; position: relative; }
+        #plane-symbol { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 120px; height: 10px; display: flex; justify-content: space-between; align-items: center; z-index: 15; }
+        .wing { width: 40px; height: 4px; background-color: yellow; border: 1px solid black; }
+        .center-dot { width: 12px; height: 12px; background-color: transparent; border: 3px solid yellow; border-radius: 10%; box-sizing: border-box; }
 
-        /* FPM (Flight Path Marker) 심볼 - 모든 모드에서 표시 */
-        #fpm {
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 24px; height: 24px;
-            border: 2px solid var(--plane-color);
-            border-radius: 50%;
-            box-sizing: border-box;
-            z-index: 25; /* 기수 심볼 위에 표시 */
-            transform: translate(-50%, -50%); /* 초기 위치 중심 */
-            will-change: transform;
-        }
-        /* FPM 수직 꼬리 날개 */
-        #fpm::after {
-            content: ''; position: absolute;
-            top: -12px; left: calc(50% - 1px);
-            width: 2px; height: 10px; background-color: var(--plane-color);
-        }
-        /* FPM 수평 날개 */
-        #fpm::before {
-            content: ''; position: absolute;
-            top: calc(50% - 1px); left: -10px;
-            width: 44px; height: 2px; background-color: var(--plane-color);
-        }
+        #fpm { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; border: 2px solid yellow; border-radius: 50%; box-sizing: border-box; z-index: 25; transform: translate(-50%, -50%); }
+        #fpm::after { content: ''; position: absolute; top: -12px; left: calc(50% - 1px); width: 2px; height: 10px; background-color: yellow; }
+        #fpm::before { content: ''; position: absolute; top: calc(50% - 1px); left: -10px; width: 44px; height: 2px; background-color: yellow; }
 
-        /* 테이프 (속도, 고도, 방위각) */
-        .tape {
-            position: absolute;
-            background-color: var(--tape-bg);
-            border: 1px solid var(--tape-border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10;
-        }
-        .tape-vertical {
-            top: 15%; bottom: 15%; width: 70px;
-            flex-direction: column; font-size: 1.2rem;
-        }
+        /* ILS 십자선 */
+        #ils-h, #ils-v { position: absolute; background: var(--boeing-magenta); z-index: 20; display: none; }
+        #ils-h { width: 150px; height: 2px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        #ils-v { width: 2px; height: 150px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+        .tape { position: absolute; background-color: var(--tape-bg); border: 1px solid white; display: flex; align-items: center; justify-content: center; z-index: 10; }
+        .tape-vertical { top: 15%; bottom: 15%; width: 70px; flex-direction: column; font-size: 1.2rem; }
         #ias-tape { left: 10px; }
         #alt-tape { right: 10px; }
-        
-        #hdg-tape {
-            top: 10px; left: 50%;
-            transform: translateX(-50%);
-            width: 120px; height: 35px;
-            font-size: 1.2rem; font-weight: bold;
-            color: var(--theme-primary);
-        }
-        
-        .tape-label { color: var(--theme-secondary); font-size: 0.8rem; margin-bottom: 5px; }
-        .tape-value {
-            color: var(--theme-primary);
-            font-weight: bold; font-size: 1.3rem;
-            border: 2px solid var(--tape-border);
-            padding: 5px; background: black;
-            width: 80%; text-align: center;
-        }
-        body.fighter-mode .tape-value { background: transparent; }
+        #hdg-tape { top: 10px; left: 50%; transform: translateX(-50%); width: 120px; height: 35px; font-size: 1.2rem; font-weight: bold; color: var(--boeing-green); }
+        .tape-label { color: var(--boeing-cyan); font-size: 0.8rem; margin-bottom: 5px; }
+        .tape-value { color: var(--boeing-green); font-weight: bold; font-size: 1.3rem; border: 2px solid white; padding: 5px; background: black; width: 80%; text-align: center; }
 
-        /* 실속 경고 */
-        #stall-warning {
-            position: absolute;
-            top: 25%; left: 50%;
-            transform: translateX(-50%);
-            color: red; font-size: 2.5rem; font-weight: bold;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 5px 20px; border: 2px solid red;
-            display: none; animation: blink 0.4s infinite;
-            z-index: 20;
+        #master-warning {
+            position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
+            color: red; font-size: 2rem; font-weight: bold; background: rgba(0, 0, 0, 0.8);
+            padding: 5px 20px; border: 2px solid red; display: none; z-index: 30;
         }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
 
-        /* 피드백 패널 */
-        #status-panel {
-            padding: 10px 15px;
-            display: flex; justify-content: space-between; align-items: center;
-            background-color: #1a1a1a;
-            border-bottom: 2px solid #333;
-        }
-        #feedback { color: var(--theme-secondary); font-size: 0.95rem; width: 65%; }
-        #lift-status { color: var(--theme-primary); font-size: 0.95rem; text-align: right; width: 30%; }
+        #status-panel { padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; background-color: #1a1a1a; border-bottom: 2px solid #333; }
+        #feedback { color: var(--boeing-cyan); font-size: 0.95rem; width: 65%; }
 
-        /* 하단 슬라이더 컨트롤 (격자 레이아웃 적용) */
-        #controls {
-            padding: 15px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px 20px;
-        }
+        #controls { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px 20px; }
         .control-group { display: flex; align-items: center; justify-content: space-between; }
-        .control-group label { width: 70px; color: var(--boeing-magenta); font-weight: bold; font-size: 0.9rem; }
+        .control-group label { width: 70px; color: var(--boeing-magenta); font-size: 0.9rem; }
         .control-group input[type="range"] { flex-grow: 1; margin: 0 10px; cursor: pointer; }
-        /* 키보드 포커스 스타일 */
-        .control-group input[type="range"]:focus { outline: 2px solid var(--theme-secondary); outline-offset: 2px; }
+        .control-group input[type="range"]:focus { outline: 2px solid var(--boeing-cyan); }
         .control-value { width: 45px; text-align: right; color: white; font-size: 0.9rem; }
 
-        /* 시작 화면 */
-        #start-screen {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.9);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 100;
-        }
-        #start-btn {
-            padding: 15px 30px; font-size: 1.5rem;
-            background: var(--boeing-green); color: black;
-            border: none; cursor: pointer; font-family: inherit; font-weight: bold;
-        }
+        #start-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        #start-btn { padding: 20px 40px; font-size: 1.5rem; background: var(--boeing-green); cursor: pointer; font-family: inherit; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div class="header-container">
-        <h1>FLIGHT PHYSICS SIM</h1>
-        <button id="theme-btn">FIGHTER HUD 변환</button>
+    <div id="start-overlay"><button id="start-btn">ENTER FLIGHT DECK</button></div>
+
+    <!-- 왼쪽 시스템 패널 -->
+    <div id="left-panel">
+        <h2 class="panel-title">ELEC & ENG</h2>
+        <button id="btn-bat" class="sys-btn">BATTERY: OFF</button>
+        <button id="btn-eng" class="sys-btn">ENGINE: OFF</button>
+        
+        <h2 class="panel-title" style="margin-top: 10px;">FMC / ROUTE</h2>
+        <div class="fmc-group">
+            <label>DEP (출발지)</label>
+            <select id="sel-dep">
+                <option value="RKSS">RKSS (Gimpo)</option>
+                <option value="RKSI">RKSI (Incheon)</option>
+                <option value="RKPK">RKPK (Gimhae)</option>
+                <option value="RKPC">RKPC (Jeju)</option>
+                <option value="RKPU">RKPU (Ulsan)</option>
+            </select>
+            <label>ARR (도착지)</label>
+            <select id="sel-arr">
+                <option value="RKPC">RKPC (Jeju)</option>
+                <option value="RKPK">RKPK (Gimhae)</option>
+                <option value="RKSS">RKSS (Gimpo)</option>
+                <option value="RKSI">RKSI (Incheon)</option>
+                <option value="RKPU">RKPU (Ulsan)</option>
+            </select>
+            <button id="btn-exec" style="margin-top: 5px;">EXECUTE PLAN</button>
+        </div>
+
+        <h2 class="panel-title" style="margin-top: 10px;">NAV MAP</h2>
+        <canvas id="nav-map" width="220" height="250"></canvas>
     </div>
 
-    <div id="sim-container">
-        <div id="start-screen"><button id="start-btn">비행 시작</button></div>
-
-        <div id="pfd">
-            <div id="roll-container">
-                <div id="pitch-container">
-                    <div id="sky"></div>
-                    <div id="ground"></div>
-                    <div id="pitch-lines"></div>
+    <!-- 오른쪽 조종석 패널 -->
+    <div id="right-panel">
+        <div id="pfd-screen">
+            <div id="pfd">
+                <div id="roll-container">
+                    <div id="pitch-container">
+                        <div id="sky"></div>
+                        <div id="ground"></div>
+                        <div id="pitch-lines"></div>
+                    </div>
                 </div>
+
+                <!-- ILS 십자선 -->
+                <div id="ils-h"></div>
+                <div id="ils-v"></div>
+
+                <div id="plane-symbol">
+                    <div class="wing"></div><div class="center-dot"></div><div class="wing"></div>
+                </div>
+                <div id="fpm"></div>
+
+                <div id="hdg-tape" class="tape">HDG <span id="hdg-val" style="margin-left:10px;">360</span></div>
+                <div id="ias-tape" class="tape tape-vertical">
+                    <div class="tape-label">IAS</div><div id="ias-val" class="tape-value">0</div>
+                </div>
+                <div id="alt-tape" class="tape tape-vertical">
+                    <div class="tape-label">ALT</div><div id="alt-val" class="tape-value">0</div>
+                </div>
+
+                <div id="master-warning">WARNING</div>
             </div>
-
-            <div id="plane-symbol">
-                <div class="wing"></div>
-                <div class="center-dot"></div>
-                <div class="wing"></div>
-            </div>
-
-            <div id="fpm"></div>
-
-            <div id="hdg-tape" class="tape">HDG <span id="hdg-val" style="margin-left:10px;">360</span></div>
-
-            <div id="ias-tape" class="tape tape-vertical">
-                <div class="tape-label">IAS</div>
-                <div id="ias-val" class="tape-value">250</div>
-            </div>
-
-            <div id="alt-tape" class="tape tape-vertical">
-                <div class="tape-label">ALT</div>
-                <div id="alt-val" class="tape-value">5000</div>
-            </div>
-
-            <div id="stall-warning">STALL</div>
         </div>
 
         <div id="status-panel">
-            <div id="feedback">이륙 준비 완료. 슬라이더 클릭 후 키보드로 조작 가능.</div>
-            <div id="lift-status">V-LIFT: 100%</div>
+            <div id="feedback">배터리와 엔진을 켜주십시오. (슬라이더 탭 후 키보드 조작)</div>
         </div>
 
         <div id="controls">
-            <div class="control-group">
-                <label>THRUST</label>
-                <input type="range" id="thrust" min="0" max="100" value="50" tabindex="0">
-                <div id="thrust-val" class="control-value">50%</div>
-            </div>
-            <div class="control-group">
-                <label>PITCH(CG)</label>
-                <input type="range" id="cg" min="-15" max="15" step="1" value="0" tabindex="0">
-                <div id="cg-val" class="control-value">0</div>
-            </div>
-            <div class="control-group">
-                <label>ROLL(Ail)</label>
-                <input type="range" id="roll" min="-60" max="60" step="1" value="0" tabindex="0">
-                <div id="roll-val" class="control-value">0°</div>
-            </div>
-            <div class="control-group">
-                <label>YAW(Rud)</label>
-                <input type="range" id="yaw" min="-30" max="30" step="1" value="0" tabindex="0">
-                <div id="yaw-val" class="control-value">0°</div>
-            </div>
-            <div class="control-group" style="grid-column: span 2;">
-                <label>FLAPS</label>
-                <input type="range" id="flaps" min="0" max="30" step="10" value="0" tabindex="0">
-                <div id="flaps-val" class="control-value">0°</div>
-            </div>
+            <div class="control-group"><label>THRUST</label><input type="range" id="thrust" min="0" max="100" value="0" tabindex="0"><div id="thrust-val" class="control-value">0%</div></div>
+            <div class="control-group"><label>PITCH</label><input type="range" id="cg" min="-15" max="15" step="1" value="0" tabindex="0"><div id="cg-val" class="control-value">0</div></div>
+            <div class="control-group"><label>ROLL</label><input type="range" id="roll" min="-60" max="60" step="1" value="0" tabindex="0"><div id="roll-val" class="control-value">0°</div></div>
+            <div class="control-group"><label>YAW</label><input type="range" id="yaw" min="-30" max="30" step="1" value="0" tabindex="0"><div id="yaw-val" class="control-value">0°</div></div>
+            <div class="control-group" style="grid-column: span 2;"><label>FLAPS</label><input type="range" id="flaps" min="0" max="30" step="10" value="0" tabindex="0"><div id="flaps-val" class="control-value">0°</div></div>
         </div>
     </div>
 
     <script>
-        // --- 물리 및 상태 변수 ---
+        // --- AIRAC 데이터베이스 (간이 좌표계: 한반도 스케일) ---
+        const AIRPORTS = {
+            RKSS: { name: 'Gimpo', x: 70, y: 50 },
+            RKSI: { name: 'Incheon', x: 50, y: 60 },
+            RKPK: { name: 'Gimhae', x: 170, y: 180 },
+            RKPU: { name: 'Ulsan', x: 190, y: 160 },
+            RKPC: { name: 'Jeju', x: 80, y: 230 }
+        };
+
+        // --- 상태 변수 ---
         let state = {
-            ias: 250,        
-            alt: 5000,       
-            pitch: 0,        
-            heading: 0,      
-            thrust: 50,      
-            flaps: 0,        
-            cg: 0,           
-            rollTarget: 0,   
-            actualRoll: 0,   
-            yawTarget: 0,    
-            verticalSpeed: 0, // FPM 계산용
-            mass: 100,       
-            weight: 1000,    
-            isStalling: false
+            batOn: false, engOn: false,
+            ias: 0, alt: 0, pitch: 0, heading: 180,
+            thrust: 0, flaps: 0, cg: 0, rollTarget: 0, actualRoll: 0, yawTarget: 0, verticalSpeed: 0,
+            mass: 100, weight: 1000, isStalling: false,
+            // 네비게이션 위치 (시작은 김포)
+            posX: AIRPORTS.RKSS.x, posY: AIRPORTS.RKSS.y,
+            route: { dep: 'RKSS', arr: null },
+            gpwsPlaying: false
         };
 
+        // --- DOM ---
         const ui = {
-            rollCont: document.getElementById('roll-container'),
-            pitchCont: document.getElementById('pitch-container'),
-            fpm: document.getElementById('fpm'), // FPM DOM 추가
-            ias: document.getElementById('ias-val'),
-            alt: document.getElementById('alt-val'),
-            hdg: document.getElementById('hdg-val'),
-            liftStatus: document.getElementById('lift-status'),
-            feedback: document.getElementById('feedback'),
-            stallWarn: document.getElementById('stall-warning'),
-            inpThrust: document.getElementById('thrust'),
-            inpFlaps: document.getElementById('flaps'),
-            inpCG: document.getElementById('cg'),
-            inpRoll: document.getElementById('roll'),
-            inpYaw: document.getElementById('yaw'),
-            valThrust: document.getElementById('thrust-val'),
-            valFlaps: document.getElementById('flaps-val'),
-            valCG: document.getElementById('cg-val'),
-            valRoll: document.getElementById('roll-val'),
-            valYaw: document.getElementById('yaw-val'),
-            startScreen: document.getElementById('start-screen'),
-            startBtn: document.getElementById('start-btn'),
-            pitchLines: document.getElementById('pitch-lines'),
-            themeBtn: document.getElementById('theme-btn')
+            bat: document.getElementById('btn-bat'), eng: document.getElementById('btn-eng'),
+            screen: document.getElementById('pfd-screen'), mapCanvas: document.getElementById('nav-map'),
+            dep: document.getElementById('sel-dep'), arr: document.getElementById('sel-arr'), exec: document.getElementById('btn-exec'),
+            ilsH: document.getElementById('ils-h'), ilsV: document.getElementById('ils-v'),
+            warn: document.getElementById('master-warning'), feedback: document.getElementById('feedback'),
+            rollCont: document.getElementById('roll-container'), pitchCont: document.getElementById('pitch-container'),
+            fpm: document.getElementById('fpm'), ias: document.getElementById('ias-val'), alt: document.getElementById('alt-val'), hdg: document.getElementById('hdg-val'),
+            inpThrust: document.getElementById('thrust'), inpFlaps: document.getElementById('flaps'), inpCG: document.getElementById('cg'), inpRoll: document.getElementById('roll'), inpYaw: document.getElementById('yaw'),
+            valThrust: document.getElementById('thrust-val'), valFlaps: document.getElementById('flaps-val'), valCG: document.getElementById('cg-val'), valRoll: document.getElementById('roll-val'), valYaw: document.getElementById('yaw-val'),
+            pitchLines: document.getElementById('pitch-lines')
         };
 
-        // --- 테마 전환 로직 ---
-        ui.themeBtn.addEventListener('click', () => {
-            document.body.classList.toggle('fighter-mode');
-            if (document.body.classList.contains('fighter-mode')) {
-                ui.themeBtn.innerText = "BOEING PFD 변환";
-            } else {
-                ui.themeBtn.innerText = "FIGHTER HUD 변환";
-            }
-        });
+        const ctx = ui.mapCanvas.getContext('2d');
 
-        // --- Web Audio API (실속 경고음) ---
-        let audioCtx;
-        let beepInterval;
+        // --- 오디오 (Web Audio API & TTS) ---
+        let audioCtx, engineOsc, engineGain;
 
-        ui.startBtn.addEventListener('click', () => {
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-overlay').style.display = 'none';
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            ui.startScreen.style.display = 'none';
-            lastTime = performance.now();
+            
+            // 엔진음 세팅 (백그라운드)
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            engineOsc.type = 'sine';
+            engineOsc.frequency.value = 100;
+            engineGain.gain.value = 0; // 초기 소리 0
+            engineOsc.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+
             requestAnimationFrame(gameLoop);
         });
 
-        function playStallBeep() {
-            if(!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.type = 'sawtooth'; 
-            osc.frequency.setValueAtTime(450, audioCtx.currentTime); 
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        // TTS 경고 (GPWS 등)
+        function playVoiceWarning(text) {
+            if (state.gpwsPlaying) return;
+            state.gpwsPlaying = true;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US'; utterance.rate = 1.1; utterance.pitch = 0.8;
+            utterance.onend = () => { setTimeout(() => state.gpwsPlaying = false, 1500); };
+            window.speechSynthesis.speak(utterance);
         }
 
-        // --- 피치 눈금 그리기 ---
+        // --- 시스템 토글 ---
+        ui.bat.addEventListener('click', () => {
+            state.batOn = !state.batOn;
+            ui.bat.innerText = state.batOn ? "BATTERY: ON" : "BATTERY: OFF";
+            ui.bat.className = state.batOn ? "sys-btn on" : "sys-btn";
+            if(state.batOn) ui.screen.classList.add('powered');
+            else ui.screen.classList.remove('powered');
+        });
+
+        ui.eng.addEventListener('click', () => {
+            if(!state.batOn) { ui.feedback.innerText = "배터리를 먼저 켜야 합니다."; return; }
+            state.engOn = !state.engOn;
+            ui.eng.innerText = state.engOn ? "ENGINE: ON" : "ENGINE: OFF";
+            ui.eng.className = state.engOn ? "sys-btn on" : "sys-btn";
+            if(state.engOn) { engineGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 2); }
+            else { engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 1); state.thrust = 0; ui.inpThrust.value = 0; updateThrust(0); }
+        });
+
+        // --- FMC 실행 ---
+        ui.exec.addEventListener('click', () => {
+            if(!state.batOn) return;
+            state.route.dep = ui.dep.value;
+            state.route.arr = ui.arr.value;
+            // 출발지로 텔레포트 (시뮬레이터 편의상)
+            state.posX = AIRPORTS[state.route.dep].x;
+            state.posY = AIRPORTS[state.route.dep].y;
+            state.alt = 0; state.ias = 0; state.heading = 180;
+            ui.feedback.innerText = `${AIRPORTS[state.route.dep].name} -> ${AIRPORTS[state.route.arr].name} 루트 설정 완료.`;
+        });
+
+        // --- 지도 렌더링 ---
+        function drawMap() {
+            ctx.clearRect(0, 0, ui.mapCanvas.width, ui.mapCanvas.height);
+            
+            // 공항들 그리기
+            for(const code in AIRPORTS) {
+                const pt = AIRPORTS[code];
+                ctx.fillStyle = code === state.route.arr ? varBoeingMagenta : 'white';
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 3, 0, Math.PI*2); ctx.fill();
+                ctx.font = "10px monospace"; ctx.fillText(code, pt.x + 5, pt.y + 3);
+            }
+
+            // 항로 선 긋기
+            if(state.route.arr) {
+                const p1 = AIRPORTS[state.route.dep], p2 = AIRPORTS[state.route.arr];
+                ctx.strokeStyle = '#FF00FF'; ctx.setLineDash([5, 5]);
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            // 내 비행기 (삼각형)
+            ctx.save();
+            ctx.translate(state.posX, state.posY);
+            ctx.rotate(state.heading * Math.PI / 180);
+            ctx.fillStyle = '#00FF00';
+            ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.fill();
+            ctx.restore();
+        }
+
+        const varBoeingMagenta = '#FF00FF';
+
+        // --- 피치 눈금 ---
         for(let i = -60; i <= 60; i += 10) {
             if(i === 0) continue;
-            let line = document.createElement('div');
-            line.className = 'pitch-line';
-            line.style.top = `calc(50% - ${i * 4}px)`; // 1도당 4px 배율
-            line.style.width = i % 20 === 0 ? '100px' : '50px';
-            line.innerHTML = `<span>${Math.abs(i)}</span>`;
-            ui.pitchLines.appendChild(line);
+            let line = document.createElement('div'); line.className = 'pitch-line';
+            line.style.top = `calc(50% - ${i * 4}px)`; line.style.width = i % 20 === 0 ? '100px' : '50px';
+            line.innerHTML = `<span>${Math.abs(i)}</span>`; ui.pitchLines.appendChild(line);
         }
 
-        // --- 입력 업데이트 함수 (마우스 및 키보드 공용) ---
-        function updateThrust(val) { state.thrust = Math.max(0, Math.min(100, val)); ui.valThrust.innerText = state.thrust + '%'; ui.inpThrust.value = state.thrust; }
+        // --- 입력 핸들러 ---
+        function updateThrust(val) { if(!state.engOn && val > 0) val = 0; state.thrust = Math.max(0, Math.min(100, val)); ui.valThrust.innerText = state.thrust + '%'; ui.inpThrust.value = state.thrust; }
         function updateFlaps(val) { state.flaps = Math.max(0, Math.min(30, val)); ui.valFlaps.innerText = state.flaps + '°'; ui.inpFlaps.value = state.flaps; }
         function updateCG(val) { state.cg = Math.max(-15, Math.min(15, val)); ui.valCG.innerText = state.cg; ui.inpCG.value = state.cg; }
         function updateRoll(val) { state.rollTarget = Math.max(-60, Math.min(60, val)); ui.valRoll.innerText = state.rollTarget + '°'; ui.inpRoll.value = state.rollTarget; }
         function updateYaw(val) { state.yawTarget = Math.max(-30, Math.min(30, val)); ui.valYaw.innerText = state.yawTarget + '°'; ui.inpYaw.value = state.yawTarget; }
 
-        // --- 마우스 입력 이벤트 ---
         ui.inpThrust.addEventListener('input', (e) => updateThrust(parseInt(e.target.value)));
         ui.inpFlaps.addEventListener('input', (e) => updateFlaps(parseInt(e.target.value)));
         ui.inpCG.addEventListener('input', (e) => updateCG(parseInt(e.target.value)));
         ui.inpRoll.addEventListener('input', (e) => updateRoll(parseInt(e.target.value)));
         ui.inpYaw.addEventListener('input', (e) => updateYaw(parseInt(e.target.value)));
 
-        // --- 키보드 조작 핸들러 ---
-        function handleKeyboardControl(e, type) {
-            if (document.activeElement !== e.target) return; // 포커스된 슬라이더만 조작
+        ui.inpThrust.parentElement.parentElement.addEventListener('keydown', (e) => {
+            if (document.activeElement.tagName !== 'INPUT') return;
+            if(e.key === 'ArrowUp' && document.activeElement === ui.inpThrust) { updateThrust(state.thrust + 5); e.preventDefault(); }
+            if(e.key === 'ArrowDown' && document.activeElement === ui.inpThrust) { updateThrust(state.thrust - 5); e.preventDefault(); }
+        });
 
-            let preventDefault = true;
-            switch (type) {
-                case 'thrust':
-                    if (e.key === 'ArrowUp') updateThrust(state.thrust + 5);
-                    else if (e.key === 'ArrowDown') updateThrust(state.thrust - 5);
-                    else if (e.key === 'PageUp') updateThrust(state.thrust + 10);
-                    else if (e.key === 'PageDown') updateThrust(state.thrust - 10);
-                    else if (e.key === 'Home') updateThrust(0);
-                    else if (e.key === 'End') updateThrust(100);
-                    else preventDefault = false;
-                    break;
-                case 'cg':
-                    if (e.key === 'ArrowUp') updateCG(state.cg + 1);
-                    else if (e.key === 'ArrowDown') updateCG(state.cg - 1);
-                    else if (e.key === 'PageUp') updateCG(state.cg + 5);
-                    else if (e.key === 'PageDown') updateCG(state.cg - 5);
-                    else if (e.key === 'Home') updateCG(0);
-                    else preventDefault = false;
-                    break;
-                case 'roll':
-                    if (e.key === 'ArrowRight') updateRoll(state.rollTarget + 2);
-                    else if (e.key === 'ArrowLeft') updateRoll(state.rollTarget - 2);
-                    else if (e.key === 'PageUp') updateRoll(state.rollTarget + 10);
-                    else if (e.key === 'PageDown') updateRoll(state.rollTarget - 10);
-                    else if (e.key === 'Home') updateRoll(0);
-                    else preventDefault = false;
-                    break;
-                case 'yaw':
-                    if (e.key === 'ArrowRight') updateYaw(state.yawTarget + 1);
-                    else if (e.key === 'ArrowLeft') updateYaw(state.yawTarget - 1);
-                    else if (e.key === 'PageUp') updateYaw(state.yawTarget + 5);
-                    else if (e.key === 'PageDown') updateYaw(state.yawTarget - 5);
-                    else if (e.key === 'Home') updateYaw(0);
-                    else preventDefault = false;
-                    break;
-                case 'flaps':
-                    if (e.key === 'ArrowUp') updateFlaps(state.flaps + 10);
-                    else if (e.key === 'ArrowDown') updateFlaps(state.flaps - 10);
-                    else preventDefault = false;
-                    break;
-            }
-            if (preventDefault) e.preventDefault(); // 브라우저 기본 스크롤 방지
-        }
-
-        ui.inpThrust.addEventListener('keydown', (e) => handleKeyboardControl(e, 'thrust'));
-        ui.inpCG.addEventListener('keydown', (e) => handleKeyboardControl(e, 'cg'));
-        ui.inpRoll.addEventListener('keydown', (e) => handleKeyboardControl(e, 'roll'));
-        ui.inpYaw.addEventListener('keydown', (e) => handleKeyboardControl(e, 'yaw'));
-        ui.inpFlaps.addEventListener('keydown', (e) => handleKeyboardControl(e, 'flaps'));
-
-        // --- 메인 게임 루프 ---
+        // --- 루프 ---
         let lastTime = 0;
         function gameLoop(time) {
-            const dt = Math.min((time - lastTime) / 1000, 0.1); 
-            lastTime = time;
+            const dt = Math.min((time - lastTime) / 1000, 0.1); lastTime = time;
 
-            // 1. Roll 갱신 (관성 적용)
+            if(!state.batOn) {
+                requestAnimationFrame(gameLoop); return; // 꺼져있으면 연산 최소화
+            }
+
+            // 역학
             state.actualRoll += (state.rollTarget - state.actualRoll) * dt * 3;
             let rollRad = state.actualRoll * Math.PI / 180;
-
-            // 2. 역학 계산
             const targetPitch = state.cg * 1.5;
             
-            // 총 양력 계산
             let totalLift = (Math.pow(state.ias, 2) / 62500) * state.weight * (1 + state.flaps * 0.015);
-            
-            // 수직 양력 감소 (Bank angle 효과)
             let verticalLift = totalLift * Math.cos(rollRad);
             let horizontalLift = totalLift * Math.sin(rollRad); 
 
-            // 항력 및 가속도 계산
             let drag = (Math.pow(state.ias, 2) / 62500) * 250 * (1 + state.flaps * 0.03) + (Math.abs(state.yawTarget) * 2); 
             let gravityAccel = state.weight * Math.sin(state.pitch * Math.PI / 180);
             let thrustForce = state.thrust * 5; 
@@ -536,79 +383,91 @@
             state.ias += accel * dt * 10;
             if(state.ias < 0) state.ias = 0;
 
-            // 선회율(Turn Rate) 및 방위각(Heading) 계산
+            // 방위각 & 위치 이동 (네비게이션)
             let turnRate = (horizontalLift / (state.mass * Math.max(state.ias, 50)) * 500) + (state.yawTarget * 0.5);
             state.heading += turnRate * dt;
-            if(state.heading >= 360) state.heading -= 360;
-            if(state.heading < 0) state.heading += 360;
+            if(state.heading >= 360) state.heading -= 360; if(state.heading < 0) state.heading += 360;
 
-            // 실속(Stall) 처리
+            // 속도를 지도 좌표 픽셀로 변환 (아주 느리게 축소)
+            let mapSpeed = state.ias * 0.005 * dt;
+            state.posX += Math.sin(state.heading * Math.PI / 180) * mapSpeed;
+            state.posY -= Math.cos(state.heading * Math.PI / 180) * mapSpeed;
+
+            // 실속
             let stallSpeed = 160 - (state.flaps * 1.2);
-            if (state.ias < stallSpeed) {
-                verticalLift *= 0.3; 
-                state.pitch -= 25 * dt; 
-                if (!state.isStalling) {
-                    state.isStalling = true;
-                    ui.stallWarn.style.display = 'block';
-                    beepInterval = setInterval(playStallBeep, 400);
-                }
+            if (state.ias < stallSpeed && state.alt > 10) {
+                verticalLift *= 0.3; state.pitch -= 25 * dt; 
+                ui.warn.innerText = "STALL"; ui.warn.style.display = 'block';
+                if(!state.isStalling) { playVoiceWarning("Stall, Stall"); state.isStalling = true; }
             } else {
                 state.pitch += (targetPitch - state.pitch) * dt * 2;
-                if (state.isStalling) {
-                    state.isStalling = false;
-                    ui.stallWarn.style.display = 'none';
-                    clearInterval(beepInterval);
-                }
+                state.isStalling = false;
             }
 
-            // 고도 및 수직 속도 업데이트
+            // 고도 업데이트
             state.verticalSpeed = ((verticalLift - state.weight) / state.mass * 50) + (state.ias * Math.sin(state.pitch * Math.PI / 180) * 15);
             state.alt += state.verticalSpeed * dt;
-            if (state.alt < 0) { state.alt = 0; state.verticalSpeed = 0; } 
-
-            // --- UI 업데이트 ---
             
-            // 지평선 회전(Roll) 및 상하 이동(Pitch)
+            // 착륙 판정 (땅에 닿았을 때)
+            if (state.alt <= 0) { 
+                state.alt = 0; 
+                if(state.verticalSpeed < -50) {
+                    ui.warn.innerText = "CRASH"; ui.warn.style.display = 'block'; playVoiceWarning("Sink rate, pull up");
+                } else {
+                    state.verticalSpeed = 0; state.pitch = 0; state.actualRoll = 0;
+                    ui.warn.style.display = 'none';
+                }
+            } else if (!state.isStalling) {
+                ui.warn.style.display = 'none';
+            }
+
+            // GPWS (지면 근접 경고)
+            if (state.alt > 50 && state.alt < 1000 && state.verticalSpeed < -100) {
+                ui.warn.innerText = "PULL UP"; ui.warn.style.display = 'block';
+                playVoiceWarning("Pull up! Pull up!");
+            }
+
+            // UI 렌더링
             ui.rollCont.style.transform = `translate(-50%, -50%) rotate(${-state.actualRoll}deg)`;
             ui.pitchCont.style.transform = `translateY(${state.pitch * 4}px)`;
             
-            // FPM (Flight Path Marker) 위치 업데이트 (모든 모드 공용)
-            // 핵심 물리: FPM은 기수 심볼에서 비행 경로 벡터만큼 오프셋됨
-            // 수직 오프셋: 수직 속도에 비례 (양수 VS -> FPM 아래 오프셋). 피치 배율(1도당 4px)에 맞춰 스케일링.
-            // 단순화된 계산: -(verticalSpeed / ias * 상수). 음수를 곱하는 이유는 verticalSpeed가 양수일 때 FPM이 기수 아래에 있어야 하기 때문.
             let fpmVerticalOffset = -(state.verticalSpeed / Math.max(state.ias, 50) * 500); 
-            // 수평 오프셋: 요우(러더) 입력에 비례
-            let fpmHorizontalOffset = state.yawTarget * 3; // 단순 배율 적용
-
+            let fpmHorizontalOffset = state.yawTarget * 3;
             ui.fpm.style.transform = `translate(calc(-50% + ${fpmHorizontalOffset}px), calc(-50% + ${fpmVerticalOffset}px))`;
 
-            // 계기판 텍스트
-            ui.ias.innerText = Math.round(state.ias);
-            ui.alt.innerText = Math.round(state.alt);
-            
-            let displayHdg = Math.round(state.heading).toString().padStart(3, '0');
-            displayHdg = displayHdg === "000" ? "360" : displayHdg;
-            ui.hdg.innerText = displayHdg;
-            
-            // 양력 상태 및 피드백 (수직 양력 기준)
-            let liftRatio = Math.round((verticalLift / state.weight) * 100);
-            ui.liftStatus.innerText = `V-LIFT: ${liftRatio}%`;
-            ui.liftStatus.style.color = liftRatio < 80 ? 'red' : (liftRatio > 120 ? 'orange' : 'var(--theme-primary)');
+            ui.ias.innerText = Math.round(state.ias); ui.alt.innerText = Math.round(state.alt);
+            ui.hdg.innerText = Math.round(state.heading).toString().padStart(3, '0') === "000" ? "360" : Math.round(state.heading).toString().padStart(3, '0');
 
-            if (state.isStalling) {
-                ui.feedback.innerText = "⚠ 실속! 기수를 내리고(CG↓) 롤을 수평으로 맞추세요!";
-                ui.feedback.style.color = "red";
-            } else if (Math.abs(state.actualRoll) > 40 && liftRatio < 100) {
-                ui.feedback.innerText = "급선회 중! 고도가 떨어집니다. 기수(Pitch)를 더 드세요!";
-                ui.feedback.style.color = "orange";
-            } else if (state.ias > 340) {
-                ui.feedback.innerText = "과속! 추력을 줄이세요.";
-                ui.feedback.style.color = "orange";
-            } else {
-                ui.feedback.innerText = Math.abs(state.actualRoll) > 10 ? "선회 비행 중 (Turning)" : "안정적인 비행 중입니다.";
-                ui.feedback.style.color = "var(--theme-primary)";
+            // ILS 로직 (도착지 근처일 때 활성화)
+            if(state.route.arr) {
+                const arrPt = AIRPORTS[state.route.arr];
+                const dx = arrPt.x - state.posX; const dy = arrPt.y - state.posY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if(dist < 50 && state.alt > 0) {
+                    // 지도상의 상대 각도
+                    let targetHdg = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+                    let hdgDiff = targetHdg - state.heading;
+                    if(hdgDiff > 180) hdgDiff -= 360; if(hdgDiff < -180) hdgDiff += 360;
+                    
+                    // 로컬라이저 (수평 십자선: 방향 편차)
+                    ui.ilsV.style.display = 'block';
+                    ui.ilsV.style.transform = `translate(calc(-50% + ${hdgDiff * 5}px), -50%)`;
+                    
+                    // 글라이드슬로프 (수직 십자선: 적정 고도 50당 1000피트라 가정)
+                    let targetAlt = dist * 20; 
+                    let altDiff = state.alt - targetAlt;
+                    ui.ilsH.style.display = 'block';
+                    ui.ilsH.style.transform = `translate(-50%, calc(-50% + ${altDiff * 0.1}px))`;
+                } else {
+                    ui.ilsV.style.display = 'none'; ui.ilsH.style.display = 'none';
+                }
             }
 
+            // 소리 핏치 변화
+            if(state.engOn) engineOsc.frequency.setTargetAtTime(100 + (state.thrust * 1.5), audioCtx.currentTime, 0.1);
+
+            drawMap();
             requestAnimationFrame(gameLoop);
         }
     </script>
